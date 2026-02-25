@@ -1,4 +1,4 @@
-"""ArcHeli — Web Search Skill (DuckDuckGo)"""
+"""ArcHillx — Web Search Skill (DuckDuckGo)"""
 from __future__ import annotations
 
 

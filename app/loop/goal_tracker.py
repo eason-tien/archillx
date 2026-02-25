@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — Goal Tracker
+ArcHillx v1.0.0 — Goal Tracker
 跨 session 長期目標追蹤，進度 0.0–1.0。
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger("archeli.goal_tracker")
+logger = logging.getLogger("archillx.goal_tracker")
 
 
 class GoalTracker:

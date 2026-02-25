@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — Cron Scheduling System
+ArcHillx v1.0.0 — Cron Scheduling System
 APScheduler：cron expression + interval，DB 持久化，Governor 審計前置。
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 
-logger = logging.getLogger("archeli.cron")
+logger = logging.getLogger("archillx.cron")
 
 
 def _tz() -> str:

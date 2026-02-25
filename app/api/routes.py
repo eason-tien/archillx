@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — API Routes  /v1/*
+ArcHillx v1.0.0 — API Routes  /v1/*
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ async def health():
     from ..runtime.cron import cron_system
     return {
         "status": "ok",
-        "system": "ArcHeli",
+        "system": "ArcHillx",
         "version": "1.0.0",
         "ai_providers": model_router.list_providers(),
         "loaded_skills": [s["name"] for s in skill_manager.list_skills()],
@@ -281,3 +281,333 @@ async def remove_cron(name: str):
     from ..runtime.cron import cron_system
     cron_system.remove(name)
     return {"status": "removed", "name": name}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LMF — Language Memory Framework  (feature-gated: ENABLE_LMF=true)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class LMFEpisodicAddReq(BaseModel):
+    event_type: str
+    content: str
+    source: str = "archillx"
+    task_id: Optional[int] = None
+    session_id: Optional[int] = None
+    importance: float = 0.5
+    tags: list[str] = []
+    metadata: dict = {}
+
+
+class LMFSemanticAddReq(BaseModel):
+    concept: str
+    content: str
+    source: str = "archillx"
+    confidence: float = 1.0
+    tags: list[str] = []
+    metadata: dict = {}
+
+
+class LMFWorkingSetReq(BaseModel):
+    task_id: int
+    key: str
+    value: Any
+    ttl_seconds: Optional[int] = None
+
+
+def _require_lmf():
+    from ..config import settings
+    if not settings.enable_lmf:
+        raise HTTPException(503, "LMF is disabled. Set ENABLE_LMF=true")
+
+
+@router.post("/lmf/episodic", tags=["lmf"])
+async def lmf_add_episodic(req: LMFEpisodicAddReq):
+    """Store an episodic memory event."""
+    _require_lmf()
+    from ..lmf.core.stores import get_episodic_store
+    store = get_episodic_store()
+    mid = store.add(
+        event_type=req.event_type, content=req.content, source=req.source,
+        task_id=req.task_id, session_id=req.session_id,
+        importance=req.importance, tags=req.tags, metadata=req.metadata,
+    )
+    return {"memory_id": mid}
+
+
+@router.get("/lmf/episodic", tags=["lmf"])
+async def lmf_search_episodic(q: str = "", event_type: str = "", limit: int = 20):
+    """Search episodic memory."""
+    _require_lmf()
+    from ..lmf.core.stores import get_episodic_store
+    store = get_episodic_store()
+    results = store.search(q=q, event_type=event_type or None, limit=limit)
+    return {"results": results}
+
+
+@router.post("/lmf/semantic", tags=["lmf"])
+async def lmf_add_semantic(req: LMFSemanticAddReq):
+    """Store a semantic memory concept."""
+    _require_lmf()
+    from ..lmf.core.stores import get_semantic_store
+    store = get_semantic_store()
+    mid = store.upsert(
+        concept=req.concept, content=req.content, source=req.source,
+        confidence=req.confidence, tags=req.tags, metadata=req.metadata,
+    )
+    return {"memory_id": mid}
+
+
+@router.get("/lmf/semantic", tags=["lmf"])
+async def lmf_search_semantic(q: str = "", limit: int = 20):
+    """Search semantic memory."""
+    _require_lmf()
+    from ..lmf.core.stores import get_semantic_store
+    store = get_semantic_store()
+    results = store.search(q=q, limit=limit)
+    return {"results": results}
+
+
+@router.post("/lmf/working", tags=["lmf"])
+async def lmf_set_working(req: LMFWorkingSetReq):
+    """Set a working memory key for a task."""
+    _require_lmf()
+    from ..lmf.core.stores import get_working_store
+    store = get_working_store()
+    store.set(task_id=req.task_id, key=req.key, value=req.value,
+              ttl_seconds=req.ttl_seconds)
+    return {"status": "ok"}
+
+
+@router.get("/lmf/working/{task_id}", tags=["lmf"])
+async def lmf_get_working(task_id: int):
+    """Get all working memory for a task."""
+    _require_lmf()
+    from ..lmf.core.stores import get_working_store
+    store = get_working_store()
+    return {"items": store.get_all(task_id)}
+
+
+@router.delete("/lmf/working/{task_id}", tags=["lmf"])
+async def lmf_clear_working(task_id: int):
+    """Clear working memory for a task."""
+    _require_lmf()
+    from ..lmf.core.stores import get_working_store
+    store = get_working_store()
+    store.clear(task_id)
+    return {"status": "cleared", "task_id": task_id}
+
+
+@router.get("/lmf/procedural", tags=["lmf"])
+async def lmf_search_procedural(skill_name: str = "", outcome: str = "", limit: int = 20):
+    """Query procedural skill-execution memory."""
+    _require_lmf()
+    from ..lmf.core.stores import get_procedural_store
+    store = get_procedural_store()
+    results = store.search(skill_name=skill_name or None,
+                           outcome=outcome or None, limit=limit)
+    return {"results": results}
+
+
+@router.get("/lmf/stats", tags=["lmf"])
+async def lmf_stats():
+    """Return row counts across all LMF tiers."""
+    _require_lmf()
+    from ..lmf.core.stores import get_lmf_stats
+    return {"stats": get_lmf_stats()}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Planner  (feature-gated: ENABLE_PLANNER=true)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class PlannerCreateReq(BaseModel):
+    title: str
+    goal_id: Optional[int] = None
+    session_id: Optional[int] = None
+    constraints: dict = {}
+
+
+def _require_planner():
+    from ..config import settings
+    if not settings.enable_planner:
+        raise HTTPException(503, "Planner is disabled. Set ENABLE_PLANNER=true")
+
+
+@router.post("/planner/plan", tags=["planner"])
+async def planner_create(req: PlannerCreateReq):
+    """Create and persist a task graph plan."""
+    _require_planner()
+    from ..planner.taskgraph import task_graph_planner
+    result = task_graph_planner.create_plan(
+        title=req.title, goal_id=req.goal_id,
+        session_id=req.session_id, constraints=req.constraints,
+    )
+    return result
+
+
+@router.get("/planner/plans", tags=["planner"])
+async def planner_list(status: str = "pending", limit: int = 20):
+    """List task graph plans."""
+    _require_planner()
+    from ..planner.taskgraph import task_graph_planner
+    return {"plans": task_graph_planner.list_plans(status=status, limit=limit)}
+
+
+@router.get("/planner/plans/{plan_id}", tags=["planner"])
+async def planner_get(plan_id: int):
+    """Get a specific plan by ID."""
+    _require_planner()
+    from ..planner.taskgraph import task_graph_planner
+    plan = task_graph_planner.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+    return plan
+
+
+@router.post("/planner/plans/{plan_id}/execute", tags=["planner"])
+async def planner_execute(plan_id: int):
+    """Trigger execution of a plan."""
+    _require_planner()
+    from ..planner.taskgraph import task_graph_planner
+    return task_graph_planner.execute_plan(plan_id)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Proactive Intelligence  (feature-gated: ENABLE_PROACTIVE=true)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ProjectCreateReq(BaseModel):
+    name: str
+    goal_statement: str = ""
+    metadata: dict = {}
+
+
+def _require_proactive():
+    from ..config import settings
+    if not settings.enable_proactive:
+        raise HTTPException(503, "Proactive intelligence is disabled. Set ENABLE_PROACTIVE=true")
+
+
+@router.get("/proactive/projects", tags=["proactive"])
+async def proactive_list_projects():
+    """List active proactive intelligence projects."""
+    _require_proactive()
+    from ..autonomy.proactive import proactive_engine
+    return {"projects": proactive_engine.list_projects()}
+
+
+@router.post("/proactive/projects", tags=["proactive"])
+async def proactive_create_project(req: ProjectCreateReq):
+    """Register a new project for proactive monitoring."""
+    _require_proactive()
+    from ..autonomy.proactive import proactive_engine
+    pid = proactive_engine.create_project(req.name, req.goal_statement, req.metadata)
+    return {"project_id": pid}
+
+
+@router.post("/proactive/run", tags=["proactive"])
+async def proactive_run():
+    """Manually trigger one proactive intelligence cycle."""
+    _require_proactive()
+    from ..autonomy.proactive import proactive_engine
+    result = proactive_engine.run_cycle()
+    return result
+
+
+@router.get("/proactive/drivers", tags=["proactive"])
+async def proactive_list_drivers(project_id: Optional[int] = None, resolved: bool = False):
+    """List daily driver items (BLOCKER / RISK / OPPORTUNITY / …)."""
+    _require_proactive()
+    from ..autonomy.proactive import proactive_engine
+    return {"drivers": proactive_engine.list_drivers(project_id=project_id, resolved=resolved)}
+
+
+@router.get("/proactive/sprint", tags=["proactive"])
+async def proactive_latest_sprint(project_id: Optional[int] = None):
+    """Get the latest sprint plan for a project."""
+    _require_proactive()
+    from ..autonomy.proactive import proactive_engine
+    plan = proactive_engine.latest_sprint(project_id)
+    if not plan:
+        raise HTTPException(404, "No sprint plan found")
+    return plan
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Notifications  (feature-gated: ENABLE_NOTIFICATIONS=true)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class NotifySendReq(BaseModel):
+    message: str
+    channel: str = "all"        # all | slack | telegram | webhook | websocket
+    level: str = "info"         # info | warning | error | success
+    metadata: dict = {}
+
+
+def _require_notifications():
+    from ..config import settings
+    if not settings.enable_notifications:
+        raise HTTPException(503, "Notifications are disabled. Set ENABLE_NOTIFICATIONS=true")
+
+
+@router.post("/notifications/send", tags=["notifications"])
+async def notifications_send(req: NotifySendReq):
+    """Send a notification through one or all configured channels."""
+    _require_notifications()
+    from ..notifications import dispatch_notification
+    result = dispatch_notification(
+        message=req.message, channel=req.channel,
+        level=req.level, metadata=req.metadata,
+    )
+    return result
+
+
+@router.get("/notifications/status", tags=["notifications"])
+async def notifications_status():
+    """Show which notification channels are configured and active."""
+    _require_notifications()
+    from ..notifications import get_notification_status
+    return get_notification_status()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Governor / Audit  (always available)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/audit", tags=["governor"])
+async def audit_log(limit: int = 50, decision: Optional[str] = None):
+    """Query the governor audit log."""
+    from ..db.schema import SessionLocal, AHAuditLog
+    from sqlalchemy import desc
+    db = SessionLocal()
+    try:
+        q = db.query(AHAuditLog).order_by(desc(AHAuditLog.created_at))
+        if decision:
+            q = q.filter(AHAuditLog.decision == decision.upper())
+        rows = q.limit(limit).all()
+        return {
+            "entries": [
+                {
+                    "id": r.id, "action": r.action, "decision": r.decision,
+                    "risk_score": r.risk_score, "reason": r.reason,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in rows
+            ]
+        }
+    finally:
+        db.close()
+
+
+@router.get("/governor/config", tags=["governor"])
+async def governor_config():
+    """Return current governor configuration."""
+    from ..config import settings
+    return {
+        "mode": settings.governor_mode,
+        "risk_block_threshold": settings.risk_block_threshold,
+        "risk_warn_threshold": settings.risk_warn_threshold,
+        "adaptive": settings.enable_adaptive_governor,
+        "consensus": settings.enable_consensus_governor,
+        "multi_agent": settings.enable_multi_agent_governor,
+    }

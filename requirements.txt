@@ -1,4 +1,4 @@
-# ArcHeli v1.0.0 — Python dependencies
+# ArcHillx v1.0.0 — Python dependencies
 # Install: pip install -r requirements.txt
 
 # ── Web framework ─────────────────────────────────────────────────────────────

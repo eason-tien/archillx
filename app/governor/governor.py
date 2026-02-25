@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — Lightweight Governor
+ArcHillx v1.0.0 — Lightweight Governor
 規則型風險評估，不依賴外部 LMF 或複雜 ML 模型。
 模式：soft_block | hard_block | audit_only | off
 """
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger("archeli.governor")
+logger = logging.getLogger("archillx.governor")
 
 # ── 高風險行為關鍵字 ─────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — OODA Main Loop
+ArcHillx v1.0.0 — OODA Main Loop
 Observe → Orient → Decide → Act → Learn
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger("archeli.main_loop")
+logger = logging.getLogger("archillx.main_loop")
 
 
 @dataclass
@@ -68,7 +68,7 @@ class MainLoop:
             # ── 2. ORIENT ────────────────────────────────────────────────────
             logger.info("[ORIENT] querying memory...")
             memory_hits = memory_store.query(inp.command, top_k=3,
-                                              tags=["archeli"])
+                                              tags=["archillx"])
             active_goals = goal_tracker.list_active()
 
             # ── 3. DECIDE ────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ class MainLoop:
         try:
             resp = router.complete(
                 prompt=f"{inp.command}{mem_ctx}",
-                system="You are ArcHeli, an autonomous AI assistant.",
+                system="You are ArcHillx, an autonomous AI assistant.",
                 task_type=inp.task_type, budget=inp.budget,
             )
             return {"success": True, "output": resp.content,

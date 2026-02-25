@@ -1,4 +1,4 @@
-"""ArcHeli — Python Code Execution Skill (sandboxed subprocess)"""
+"""ArcHillx — Python Code Execution Skill (sandboxed subprocess)"""
 from __future__ import annotations
 
 import os, subprocess, sys, tempfile

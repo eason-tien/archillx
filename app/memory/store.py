@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — Lightweight Memory Store
+ArcHillx v1.0.0 — Lightweight Memory Store
 Keyword + importance 搜尋，不需要 vector DB 或外部依賴。
 若 OLLAMA 可用則自動升級為向量搜尋（未來擴充點）。
 """
@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger("archeli.memory")
+logger = logging.getLogger("archillx.memory")
 
 
 class MemoryStore:
@@ -21,7 +21,7 @@ class MemoryStore:
     - 支援 tag 過濾
     """
 
-    def add(self, content: str, source: str = "archeli",
+    def add(self, content: str, source: str = "archillx",
             tags: list[str] | None = None,
             importance: float = 0.5,
             metadata: dict | None = None) -> int:

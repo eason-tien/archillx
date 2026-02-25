@@ -1,4 +1,4 @@
-"""ArcHeli — File Operations Skill (path whitelist safety)"""
+"""ArcHillx — File Operations Skill (path whitelist safety)"""
 from __future__ import annotations
 
 import os

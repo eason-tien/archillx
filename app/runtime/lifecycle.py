@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — Lifecycle Manager
+ArcHillx v1.0.0 — Lifecycle Manager
 Session / Task / Agent 三層狀態機。
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger("archeli.lifecycle")
+logger = logging.getLogger("archillx.lifecycle")
 
 
 class SessionManager:

@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — Multi-Provider Model Router
+ArcHillx v1.0.0 — Multi-Provider Model Router
 支援 Anthropic / OpenAI / Google / Groq / Mistral / OLLAMA / Custom endpoint。
 
 Provider 格式：  "provider:model_id"
@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-logger = logging.getLogger("archeli.model_router")
+logger = logging.getLogger("archillx.model_router")
 
 
 def _settings():

@@ -1,8 +1,8 @@
-# ArcHeli v1.0.0
+# ArcHillx v1.0.0
 
 **Standalone autonomous AI execution system.**
 
-ArcHeli is a self-contained agentic runtime that combines multi-provider AI model routing, an OODA execution loop, a lightweight Governor, persistent memory, skill orchestration, long-term goal tracking, and cron scheduling — all in a single FastAPI service backed by SQLite.
+ArcHillx is a self-contained agentic runtime that combines multi-provider AI model routing, an OODA execution loop, a lightweight Governor, persistent memory, skill orchestration, long-term goal tracking, and cron scheduling — all in a single FastAPI service backed by SQLite.
 
 ---
 
@@ -27,7 +27,7 @@ ArcHeli is a self-contained agentic runtime that combines multi-provider AI mode
 │  Model Router                                                │
 │  Anthropic · OpenAI · Google · Groq · Mistral · OLLAMA · Custom │
 ├─────────────────────────────────────────────────────────────┤
-│  SQLite  (archeli.db)   ·   Evidence JSONL logs              │
+│  SQLite  (archillx.db)   ·   Evidence JSONL logs              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -38,8 +38,8 @@ ArcHeli is a self-contained agentic runtime that combines multi-provider AI mode
 ### 1. Clone & install
 
 ```bash
-git clone https://github.com/eason-tien/archeli.git
-cd archeli
+git clone https://github.com/eason-tien/archillx.git
+cd archillx
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -63,8 +63,8 @@ Open **http://localhost:8000/docs** for the interactive API explorer.
 ### Docker (SQLite — development)
 
 ```bash
-docker build -t archeli .
-docker run -p 8000:8000 --env-file .env -v archeli_data:/app/data archeli
+docker build -t archillx .
+docker run -p 8000:8000 --env-file .env -v archillx_data:/app/data archillx
 ```
 
 ### Docker Compose (SQLite — development)
@@ -161,14 +161,14 @@ Set at least one provider key:
 DB_TYPE=mysql
 DB_HOST=localhost
 DB_PORT=3306
-DB_NAME=archeli
-DB_USER=archeli
+DB_NAME=archillx
+DB_USER=archillx
 DB_PASSWORD=secret
 ```
 
 Or override entirely:
 ```bash
-DATABASE_URL=mysql+pymysql://archeli:secret@localhost:3306/archeli
+DATABASE_URL=mysql+pymysql://archillx:secret@localhost:3306/archillx
 ```
 
 ### Model Format
@@ -188,7 +188,7 @@ Routing rules are defined in `configs/routing_rules.yaml`.
 
 ### Governor
 
-Controls which actions ArcHeli is allowed to execute:
+Controls which actions ArcHillx is allowed to execute:
 
 | Mode | Behaviour |
 |------|-----------|
@@ -217,7 +217,7 @@ Add custom skills by placing Python files in `app/skills/` and registering them 
 ## Project Structure
 
 ```
-archeli/
+archillx/
 ├── app/
 │   ├── main.py                # FastAPI app + lifespan
 │   ├── config.py              # Settings (pydantic-settings)

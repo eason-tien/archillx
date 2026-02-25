@@ -1,5 +1,5 @@
 """
-ArcHeli v1.0.0 — Skill Manager
+ArcHillx v1.0.0 — Skill Manager
 本地技能登錄、發現、執行。格式相容 OpenClaw Skill 協議。
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 import yaml
 
-logger = logging.getLogger("archeli.skill_manager")
+logger = logging.getLogger("archillx.skill_manager")
 
 
 class SkillError(Exception):
@@ -64,7 +64,7 @@ class SkillManager:
             logger.warning("skill module not found: %s", path)
             return
         try:
-            spec = importlib.util.spec_from_file_location(f"archeli.skills.{name}", path)
+            spec = importlib.util.spec_from_file_location(f"archillx.skills.{name}", path)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             fn = getattr(mod, handler, None)

@@ -60,11 +60,24 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Open **http://localhost:8000/docs** for the interactive API explorer.
 
-### Docker
+### Docker (SQLite — development)
 
 ```bash
 docker build -t archeli .
-docker run -p 8000:8000 --env-file .env archeli
+docker run -p 8000:8000 --env-file .env -v archeli_data:/app/data archeli
+```
+
+### Docker Compose (SQLite — development)
+
+```bash
+docker compose up
+```
+
+### Docker Compose (MySQL — production)
+
+```bash
+# Set DB_PASSWORD in .env first, then:
+docker compose --profile mysql up
 ```
 
 ---
@@ -133,6 +146,30 @@ Set at least one provider key:
 | Mistral | `MISTRAL_API_KEY` |
 | OLLAMA (local) | `OLLAMA_ENABLED=true` |
 | Custom endpoint | `CUSTOM_MODEL_BASE_URL` |
+
+### Database
+
+| `DB_TYPE` | Use case | Required packages |
+|-----------|----------|-------------------|
+| `sqlite` | Development (default) | Built-in |
+| `mysql` | Production | `pymysql` (included) |
+| `mssql` | Enterprise | `pyodbc` + ODBC Driver 17 |
+| `sqlite_memory` | Testing | Built-in |
+
+```bash
+# Switch to MySQL
+DB_TYPE=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=archeli
+DB_USER=archeli
+DB_PASSWORD=secret
+```
+
+Or override entirely:
+```bash
+DATABASE_URL=mysql+pymysql://archeli:secret@localhost:3306/archeli
+```
 
 ### Model Format
 

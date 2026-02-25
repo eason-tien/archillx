@@ -12,6 +12,10 @@ python-dotenv>=1.0.1
 
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlalchemy>=2.0.29
+# MySQL support (install when DB_TYPE=mysql)
+pymysql>=1.1.0
+# MSSQL support (install when DB_TYPE=mssql; requires ODBC Driver 17 on host)
+# pyodbc>=5.0.0
 
 # ── Scheduling ────────────────────────────────────────────────────────────────
 apscheduler>=3.10.4

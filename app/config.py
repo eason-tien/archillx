@@ -1,11 +1,11 @@
 """
 ArcHeli v1.0.0 — Configuration
 Standalone autonomous AI system.
+Inherits multi-database pattern from MGIS (SQLite / MySQL / MSSQL).
 """
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings
@@ -19,7 +19,20 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # ── Database ─────────────────────────────────────────────────────────────
-    db_path: str = "./archeli.db"
+    # db_type controls which engine is used.
+    # Note: SQLite is for development only. Production should use mysql/mssql.
+    db_type: Literal["sqlite", "sqlite_memory", "mysql", "mssql"] = "sqlite"
+    db_name: str = "archeli"          # SQLite: file name (archeli.db); MySQL/MSSQL: schema/db name
+    db_host: str = "localhost"
+    db_port: int = 3306               # MySQL default; MSSQL use 1433
+    db_user: str = "root"
+    db_password: str = ""
+
+    # MySQL / MSSQL connection pool (ignored for SQLite)
+    db_pool_size: int = 5             # Core persistent connections
+    db_max_overflow: int = 10         # Burst connections above pool_size
+    db_pool_timeout: int = 30         # Seconds to wait for a free connection
+    db_pool_recycle: int = 3600       # Recycle connections to prevent stale state
 
     # ── AI Providers ─────────────────────────────────────────────────────────
     # Set any key to enable that provider automatically.
@@ -67,9 +80,34 @@ class Settings(BaseSettings):
     api_key: str = ""          # Required for /v1/* endpoints (empty = no auth)
     admin_token: str = ""
 
+    # ── Constructed Database URL ──────────────────────────────────────────────
     @property
     def database_url(self) -> str:
-        return f"sqlite:///{self.db_path}"
+        # Allow full override via DATABASE_URL env var (12-factor style)
+        override = os.getenv("DATABASE_URL")
+        if override:
+            return override
+
+        if self.db_type == "sqlite":
+            return f"sqlite:///./{self.db_name}.db"
+
+        if self.db_type == "sqlite_memory":
+            return "sqlite:///:memory:"
+
+        if self.db_type == "mysql":
+            return (
+                f"mysql+pymysql://{self.db_user}:{self.db_password}"
+                f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            )
+
+        if self.db_type == "mssql":
+            return (
+                f"mssql+pyodbc://{self.db_user}:{self.db_password}"
+                f"@{self.db_host}/{self.db_name}"
+                f"?driver=ODBC+Driver+17+for+SQL+Server"
+            )
+
+        return f"sqlite:///./{self.db_name}.db"
 
     class Config:
         env_file = ".env"

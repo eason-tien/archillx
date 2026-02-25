@@ -1,0 +1,78 @@
+# ArcHeli v1.0.0 — Docker Compose
+#
+# Development (SQLite):   docker compose up
+# Production  (MySQL):    docker compose --profile mysql up
+#
+# Stop & clean:           docker compose down -v
+
+version: "3.9"
+
+services:
+
+  # ── ArcHeli API (SQLite dev mode) ──────────────────────────────────────────
+  archeli:
+    build: .
+    image: archeli:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - archeli_data:/app/data
+      - archeli_evidence:/app/evidence
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── ArcHeli API (MySQL production mode) ────────────────────────────────────
+  archeli-mysql:
+    build: .
+    image: archeli:latest
+    profiles: ["mysql"]
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DB_TYPE=mysql
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=archeli
+      - DB_USER=archeli
+      - DB_PASSWORD=${DB_PASSWORD:-archeli_secret}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - archeli_evidence:/app/evidence
+    restart: unless-stopped
+
+  # ── MySQL 8.x (production DB) ─────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    profiles: ["mysql"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_secret}
+      MYSQL_DATABASE: archeli
+      MYSQL_USER: archeli
+      MYSQL_PASSWORD: ${DB_PASSWORD:-archeli_secret}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "archeli", "-p${DB_PASSWORD:-archeli_secret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  archeli_data:
+  archeli_evidence:
+  mysql_data:

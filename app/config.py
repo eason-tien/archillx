@@ -6,15 +6,28 @@ Full feature parity with MGIS: multi-database, feature flags, provider routing.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Literal
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _read_app_version() -> str:
+    env_version = os.getenv("APP_VERSION", "").strip()
+    if env_version:
+        return env_version
+    version_file = Path(__file__).resolve().parents[1] / "VERSION"
+    try:
+        value = version_file.read_text(encoding="utf-8").strip()
+        return value or "1.0.0"
+    except OSError:
+        return "1.0.0"
 
 
 class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────────────────────
     app_name: str = "ArcHillx"
-    app_version: str = "1.0.0"
+    app_version: str = _read_app_version()
     app_env: str = "development"
     log_level: str = "INFO"
 
@@ -63,6 +76,30 @@ class Settings(BaseSettings):
     # ── Security ──────────────────────────────────────────────────────────────
     api_key: str = ""
     admin_token: str = ""
+    enable_rate_limit: bool = False
+    rate_limit_per_min: int = 120
+    high_risk_rate_limit_per_min: int = 15
+    audit_file_max_bytes: int = 5 * 1024 * 1024
+    enable_metrics: bool = True
+    enable_migration_check: bool = True
+    require_migration_head: bool = True
+
+    # ── Evolution / Self-Improvement ─────────────────────────────────────────
+
+    enable_evolution: bool = True
+    enable_evolution_auto: bool = False
+    evolution_auto_cycle_cron: str = "15 */6 * * *"
+    evolution_auto_generate_limit: int = 3
+    evolution_auto_guard_low_risk: bool = True
+    evolution_auto_guard_mode: str = "quick"
+    evolution_auto_approve_low_risk: bool = False
+    evolution_auto_approve_requires_guard_pass: bool = True
+    evolution_auto_approve_actor: str = "evolution-auto"
+    evolution_auto_apply_low_risk: bool = False
+    evolution_auto_apply_requires_guard_pass: bool = True
+    evolution_auto_apply_requires_baseline_clear: bool = True
+    evolution_auto_apply_actor: str = "evolution-auto"
+
 
     # ═══════════════════════════════════════════════════════════════════════
     #  Feature Flags — inherited from MGIS graduated rollout model
@@ -176,9 +213,10 @@ class Settings(BaseSettings):
             )
         return f"sqlite:///./{self.db_name}.db"
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
 
 
 settings = Settings()

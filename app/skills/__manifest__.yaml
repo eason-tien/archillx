@@ -12,6 +12,9 @@ skills:
     permissions: [network]
     tags: [search, web, information]
     governor_required: true
+    acl:
+      allow_sources: [api, agent, cron]
+      allow_roles: [anonymous, api_key, admin, system]
     inputs:
       - {name: query, type: string, required: true}
       - {name: max_results, type: int, required: false, default: 5}
@@ -26,6 +29,9 @@ skills:
     permissions: [filesystem]
     tags: [file, io, storage]
     governor_required: true
+    acl:
+      allow_sources: [api, agent, cron]
+      allow_roles: [admin, system]
     inputs:
       - {name: operation, type: string, required: true}
       - {name: path, type: string, required: true}
@@ -37,10 +43,13 @@ skills:
     module: code_exec.py
     handler: run
     version: "1.0"
-    description: Execute Python code in a sandboxed subprocess (static security scan)
+    description: Execute Python code via isolated sandbox backends (process worker or Docker container) with static scan
     permissions: [exec]
     tags: [code, python, exec]
     governor_required: true
+    acl:
+      allow_sources: [api]
+      allow_roles: [admin]
     inputs:
       - {name: code, type: string, required: true}
       - {name: timeout_s, type: int, required: false, default: 10}

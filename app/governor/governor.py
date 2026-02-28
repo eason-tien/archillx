@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from ..utils.telemetry import telemetry
+
 logger = logging.getLogger("archillx.governor")
 
 # ── 高風險行為關鍵字 ─────────────────────────────────────────────────────────
@@ -69,6 +71,9 @@ class Governor:
         score = self._score(action, ctx)
         decision, reason = self._decide(score)
 
+        telemetry.incr("governor_evaluations_total")
+        telemetry.incr(f"governor_decision_{decision.lower()}_total")
+        telemetry.gauge("governor_last_risk_score", score)
         self._log(action, decision, score, reason, ctx)
 
         return GovDecision(decision=decision, risk_score=score,

@@ -118,9 +118,10 @@ class MainLoop:
                 skill_name = "_model_direct"
             else:
                 skill_result = skill_manager.invoke(skill_name, {
-                    **inp.context, "command": inp.command})
+                    **inp.context, "command": inp.command}, context={"source": "agent", "role": "system", "session_id": inp.session_id, "task_id": task_id})
 
             skill_used = skill_name
+            tokens_used = int(skill_result.get("tokens", 0) or 0)
             lifecycle.tasks.start_verifying(task_id)
 
             # ── 5. LEARN ─────────────────────────────────────────────────────

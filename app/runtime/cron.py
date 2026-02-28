@@ -8,6 +8,9 @@ import json
 import logging
 from datetime import datetime
 
+from ..utils.logging_utils import structured_log
+from ..utils.telemetry import telemetry
+
 logger = logging.getLogger("archillx.cron")
 
 
@@ -66,6 +69,8 @@ class CronSystem:
     def add_interval(self, name: str, seconds: int, skill_name: str,
                      input_data: dict | None = None,
                      governor_required: bool = True) -> dict:
+        if seconds <= 0:
+            raise ValueError("interval seconds must be > 0")
         from apscheduler.triggers.interval import IntervalTrigger
         trigger = IntervalTrigger(seconds=seconds)
         return self._add(name, trigger, skill_name, input_data,
@@ -98,7 +103,8 @@ class CronSystem:
                      "enabled": j.enabled, "run_count": j.run_count,
                      "last_run": j.last_run.isoformat() if j.last_run else None}
                     for j in db.query(AHCronJob).all()]
-        except Exception:
+        except Exception as e:
+            logger.warning("cron list_jobs failed: %s", e)
             return []
 
     # ── Internal ──────────────────────────────────────────────────────────────
@@ -112,7 +118,8 @@ class CronSystem:
             trigger=trigger, id=name, name=name,
             kwargs={"skill_name": skill_name,
                     "input_data": input_data or {},
-                    "governor_required": governor_required},
+                    "governor_required": governor_required,
+                    "job_name": name},
             replace_existing=True, misfire_grace_time=60,
         )
         self._persist(name, skill_name, cron_expr, interval_s,
@@ -122,8 +129,11 @@ class CronSystem:
                 "cron_expr": cron_expr, "interval_s": interval_s}
 
     def _execute(self, skill_name: str, input_data: dict,
-                 governor_required: bool) -> dict:
-        logger.info("cron executing skill=%s", skill_name)
+                 governor_required: bool, job_name: str | None = None) -> dict:
+        structured_log(logger, logging.INFO, "cron_execute_start", skill_name=skill_name, job_name=job_name or skill_name)
+        metric_job = str(job_name or skill_name).replace("-", "_")
+        telemetry.incr("cron_execute_total")
+        telemetry.incr(f"cron_job_{metric_job}_execute_total")
         try:
             if governor_required:
                 from ..governor.governor import governor
@@ -132,14 +142,25 @@ class CronSystem:
                     {"skill": skill_name, "source": "cron"},
                 )
                 if dec.decision == "BLOCKED":
-                    logger.warning("cron blocked: %s", dec.reason)
+                    telemetry.incr("cron_blocked_total")
+                    telemetry.incr(f"cron_job_{metric_job}_blocked_total")
+                    structured_log(logger, logging.WARNING, "cron_blocked", skill_name=skill_name, job_name=job_name or skill_name, reason=dec.reason)
                     return {"success": False, "error": f"governor_blocked: {dec.reason}"}
             from .skill_manager import skill_manager
-            result = skill_manager.invoke(skill_name, input_data)
-            self._bump_run_count(skill_name)
+            result = skill_manager.invoke(skill_name, input_data, context={"source": "cron", "role": "system"})
+            self._bump_run_count(job_name or skill_name)
+            if bool(result.get("success", False)):
+                telemetry.incr("cron_success_total")
+                telemetry.incr(f"cron_job_{metric_job}_success_total")
+            else:
+                telemetry.incr("cron_failure_total")
+                telemetry.incr(f"cron_job_{metric_job}_failure_total")
+            structured_log(logger, logging.INFO, "cron_execute_done", skill_name=skill_name, job_name=job_name or skill_name, success=bool(result.get("success", False)))
             return result
         except Exception as e:
-            logger.error("cron job %s failed: %s", skill_name, e)
+            telemetry.incr("cron_failure_total")
+            telemetry.incr(f"cron_job_{metric_job}_failure_total")
+            structured_log(logger, logging.ERROR, "cron_execute_failed", skill_name=skill_name, job_name=job_name or skill_name, reason=str(e))
             return {"success": False, "error": str(e)}
 
     def _restore(self) -> None:
@@ -162,7 +183,8 @@ class CronSystem:
                         func=self._execute, trigger=trig, id=j.name, name=j.name,
                         kwargs={"skill_name": j.skill_name,
                                 "input_data": json.loads(j.input_data or "{}"),
-                                "governor_required": j.governor_required},
+                                "governor_required": j.governor_required,
+                                "job_name": j.name},
                         replace_existing=True, misfire_grace_time=60,
                     )
                     logger.info("cron restored: %s", j.name)
@@ -201,20 +223,20 @@ class CronSystem:
             if j:
                 j.enabled = enabled
                 db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cron run_count update failed for %s: %s", job_name, e)
 
-    def _bump_run_count(self, skill_name: str) -> None:
+    def _bump_run_count(self, job_name: str) -> None:
         try:
             from ..db.schema import AHCronJob, get_db
             db = next(get_db())
-            j = db.query(AHCronJob).filter_by(skill_name=skill_name).first()
+            j = db.query(AHCronJob).filter_by(name=job_name).first()
             if j:
                 j.run_count += 1
                 j.last_run = datetime.utcnow()
                 db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cron run_count update failed for %s: %s", job_name, e)
 
 
 cron_system = CronSystem()

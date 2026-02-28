@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     enable_canary_rollout: bool = False          # Staged rollout with metric guard
     enable_rollout_stats_guard: bool = False     # Stats-based rollout promotion
 
+    # ── Self Healing ───────────────────────────────────────────────────────────
+    enable_self_healing: bool = False
+    self_heal_probe_interval_s: int = 15
+    self_heal_fail_threshold: int = 3
+    self_heal_recover_threshold: int = 3
+    self_heal_cooldown_s: int = 120
+
     # ── Planning ──────────────────────────────────────────────────────────────
     enable_planner: bool = False            # Hierarchical task graph planning
     enable_goal_inference: bool = False     # Multi-hypothesis goal tracking

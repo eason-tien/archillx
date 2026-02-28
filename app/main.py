@@ -94,6 +94,7 @@ async def lifespan(app: FastAPI):
             "AdaptiveGovernor": settings.enable_adaptive_governor,
             "OpenClaw":         settings.enable_openclaw_integration,
             "TraeSolo":         settings.enable_trae_solo_integration,
+            "SelfHealing":      settings.enable_self_healing,
         }.items() if val
     ]
     if active_flags:

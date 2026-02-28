@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ...config import settings
 from .client import get_openclaw_client
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/v1/integrations/openclaw", tags=["openclaw"])
 
 class InvokeRequest(BaseModel):
     skill: str
-    input: Dict[str, Any] = {}
+    input: Dict[str, Any] = Field(default_factory=dict)
     task_id: Optional[str] = None
     session_id: Optional[str] = None
 

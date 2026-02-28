@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ class AgentRunReq(BaseModel):
     source: str = "user"
     session_id: Optional[int] = None
     goal_id: Optional[int] = None
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
     skill_hint: Optional[str] = None
     task_type: str = "general"
     budget: str = "medium"
@@ -34,14 +34,14 @@ class AgentRunResp(BaseModel):
     elapsed_s: float
     governor_approved: bool
     error: Optional[str] = None
-    memory_hits: list = []
+    memory_hits: list = Field(default_factory=list)
 
 
 class GoalCreateReq(BaseModel):
     title: str
     description: str = ""
     priority: int = 5
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
 
 class GoalUpdateReq(BaseModel):
@@ -52,7 +52,7 @@ class GoalUpdateReq(BaseModel):
 
 class SkillInvokeReq(BaseModel):
     name: str
-    inputs: dict = {}
+    inputs: dict = Field(default_factory=dict)
 
 
 class CronAddReq(BaseModel):
@@ -60,21 +60,21 @@ class CronAddReq(BaseModel):
     skill_name: str
     cron_expr: Optional[str] = None
     interval_s: Optional[int] = None
-    input_data: dict = {}
+    input_data: dict = Field(default_factory=dict)
     governor_required: bool = True
 
 
 class SessionCreateReq(BaseModel):
     name: str
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
 
 class MemoryAddReq(BaseModel):
     content: str
     source: str = "user"
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     importance: float = 0.5
-    metadata: dict = {}
+    metadata: dict = Field(default_factory=dict)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -294,8 +294,8 @@ class LMFEpisodicAddReq(BaseModel):
     task_id: Optional[int] = None
     session_id: Optional[int] = None
     importance: float = 0.5
-    tags: list[str] = []
-    metadata: dict = {}
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
 
 
 class LMFSemanticAddReq(BaseModel):
@@ -303,8 +303,8 @@ class LMFSemanticAddReq(BaseModel):
     content: str
     source: str = "archillx"
     confidence: float = 1.0
-    tags: list[str] = []
-    metadata: dict = {}
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
 
 
 class LMFWorkingSetReq(BaseModel):
@@ -424,7 +424,7 @@ class PlannerCreateReq(BaseModel):
     title: str
     goal_id: Optional[int] = None
     session_id: Optional[int] = None
-    constraints: dict = {}
+    constraints: dict = Field(default_factory=dict)
 
 
 def _require_planner():
@@ -479,7 +479,7 @@ async def planner_execute(plan_id: int):
 class ProjectCreateReq(BaseModel):
     name: str
     goal_statement: str = ""
-    metadata: dict = {}
+    metadata: dict = Field(default_factory=dict)
 
 
 def _require_proactive():
@@ -541,7 +541,7 @@ class NotifySendReq(BaseModel):
     message: str
     channel: str = "all"        # all | slack | telegram | webhook | websocket
     level: str = "info"         # info | warning | error | success
-    metadata: dict = {}
+    metadata: dict = Field(default_factory=dict)
 
 
 def _require_notifications():
@@ -568,6 +568,25 @@ async def notifications_status():
     _require_notifications()
     from ..notifications import get_notification_status
     return get_notification_status()
+
+
+
+
+class EntropyEvalReq(BaseModel):
+    indicators: dict = Field(default_factory=dict)
+    recent_scores: list[float] = Field(default_factory=list)
+    options: dict = Field(default_factory=dict)
+
+
+class SelfHealingStartReq(BaseModel):
+    reason: str = "manual"
+    force: bool = False
+
+
+class SelfHealingTickReq(BaseModel):
+    indicators: dict = Field(default_factory=dict)
+    recent_scores: list[float] = Field(default_factory=list)
+    options: dict = Field(default_factory=dict)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -611,3 +630,89 @@ async def governor_config():
         "consensus": settings.enable_consensus_governor,
         "multi_agent": settings.enable_multi_agent_governor,
     }
+
+
+@router.post("/entropy/evaluate", tags=["autonomy"])
+async def entropy_evaluate(req: EntropyEvalReq):
+    """Evaluate system entropy from normalized instability indicators (0.0 ~ 1.0)."""
+    from ..autonomy.entropy_engine import entropy_engine
+    return entropy_engine.evaluate(req.indicators, req.recent_scores, req.options)
+
+
+@router.get("/entropy/sample", tags=["autonomy"])
+async def entropy_sample():
+    """Return a sample indicator payload for entropy evaluation."""
+    return {
+        "indicators": {
+            "agent_disconnect_rate": 0.2,
+            "task_failure_rate": 0.35,
+            "latency_p95": 0.5,
+            "queue_backlog": 0.4,
+            "memory_pressure": 0.3,
+            "provider_error_rate": 0.25,
+            "governor_block_rate": 0.1,
+        },
+        "recent_scores": [31.2, 37.8, 45.1],
+        "options": {
+            "smoothing_alpha": 0.35,
+            "high_threshold": 65,
+            "critical_threshold": 85,
+            "hysteresis": 5,
+        },
+    }
+
+
+def _require_self_healing():
+    from ..config import settings
+    if not settings.enable_self_healing:
+        raise HTTPException(503, "Self-healing is disabled. Set ENABLE_SELF_HEALING=true")
+
+
+@router.post("/self-healing/start", tags=["self-healing"])
+async def self_healing_start(req: SelfHealingStartReq):
+    """Manually start self-healing takeover."""
+    _require_self_healing()
+    from ..autonomy.self_healing import self_healing_controller
+    return self_healing_controller.start(reason=req.reason, force=req.force)
+
+
+@router.post("/self-healing/stop", tags=["self-healing"])
+async def self_healing_stop(req: SelfHealingStartReq):
+    """Manually stop self-healing workflow."""
+    _require_self_healing()
+    from ..autonomy.self_healing import self_healing_controller
+    return self_healing_controller.stop(reason=req.reason)
+
+
+@router.get("/self-healing/status", tags=["self-healing"])
+async def self_healing_status():
+    """Get current self-healing controller status."""
+    _require_self_healing()
+    from ..autonomy.self_healing import self_healing_controller
+    return self_healing_controller.status()
+
+
+@router.get("/self-healing/events", tags=["self-healing"])
+async def self_healing_events(limit: int = 50):
+    """List latest self-healing events."""
+    _require_self_healing()
+    from ..autonomy.self_healing import self_healing_controller
+    return {"events": self_healing_controller.list_events(limit=limit)}
+
+
+@router.post("/self-healing/handoff", tags=["self-healing"])
+async def self_healing_handoff(req: SelfHealingStartReq):
+    """Manually force handoff from self-healing to primary agent."""
+    _require_self_healing()
+    from ..autonomy.self_healing import self_healing_controller
+    return self_healing_controller.handoff(reason=req.reason)
+
+
+@router.post("/self-healing/tick", tags=["self-healing"])
+async def self_healing_tick(req: SelfHealingTickReq):
+    """Run one self-healing monitor tick using current indicators."""
+    _require_self_healing()
+    from ..autonomy.self_healing import self_healing_controller
+    return self_healing_controller.tick(
+        indicators=req.indicators, options=req.options, recent_scores=req.recent_scores
+    )

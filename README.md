@@ -99,6 +99,14 @@ docker compose --profile mysql up
 | POST | `/v1/memory` | Add a memory item |
 | GET | `/v1/cron` | List cron jobs |
 | POST | `/v1/cron` | Create a cron job |
+| POST | `/v1/entropy/evaluate` | Advanced entropy + stability evaluation (trend/volatility/takeover signal) |
+| GET | `/v1/entropy/sample` | Get sample payload for entropy evaluation |
+| POST | `/v1/self-healing/start` | Start self-healing takeover workflow |
+| POST | `/v1/self-healing/stop` | Stop self-healing workflow |
+| GET | `/v1/self-healing/status` | Get current self-healing status |
+| GET | `/v1/self-healing/events` | List self-healing event timeline |
+| POST | `/v1/self-healing/handoff` | Force handoff back to primary agent |
+| POST | `/v1/self-healing/tick` | Run one monitor tick with indicators |
 
 ### Run a command
 
@@ -199,6 +207,17 @@ Controls which actions ArcHillx is allowed to execute:
 
 Set `GOVERNOR_MODE` and `RISK_BLOCK_THRESHOLD` in `.env`.
 
+### Self-Healing
+
+Enable with:
+
+```bash
+ENABLE_SELF_HEALING=true
+SELF_HEAL_FAIL_THRESHOLD=3
+SELF_HEAL_RECOVER_THRESHOLD=3
+SELF_HEAL_COOLDOWN_S=120
+```
+
 ---
 
 ## Built-in Skills
@@ -211,6 +230,12 @@ Set `GOVERNOR_MODE` and `RISK_BLOCK_THRESHOLD` in `.env`.
 | `_model_direct` | Direct AI model call (fallback when no skill matches) |
 
 Add custom skills by placing Python files in `app/skills/` and registering them in `app/skills/__manifest__.yaml`.
+
+---
+
+## Self-Healing (Design)
+
+- See `docs/self_healing_design.md` for a full design of takeover, auto-repair, and handoff recovery workflow.
 
 ---
 

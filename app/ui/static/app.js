@@ -222,11 +222,14 @@ async function loadMonitor(){
     {label:'Recovery mode', value:data.recovery?.mode || 'single'},
     {label:'Lock backend', value:data.recovery?.lock_backend || 'file'},
     {label:'Heartbeat age', value:hbAgeText},
+    {label:'Entropy score', value:(data.entropy?.entropy_score ?? 'n/a')},
+    {label:'Entropy risk', value:(data.entropy?.risk_level ?? 'unknown')},
   ]);
   $('#monitor-json').textContent = fmt(data);
   $('#monitor-recovery-json').textContent = fmt(data.recovery || {});
   $('#monitor-host-json').textContent = fmt(data.host || {});
   $('#monitor-telemetry-json').textContent = fmt(data.telemetry?.aggregate || data.telemetry || {});
+  $('#monitor-entropy-json').textContent = fmt(data.entropy || {});
 }
 
 function setMonitorAutoRefresh(){

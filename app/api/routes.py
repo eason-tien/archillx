@@ -18,6 +18,7 @@ from ..utils.telemetry import telemetry
 from ..utils.system_health import collect_readiness
 from ..evolution.signal_collector import _gate_summary
 from ..config import settings
+from ..entropy.engine import entropy_engine
 
 logger = logging.getLogger("archillx.api")
 
@@ -240,8 +241,19 @@ async def system_monitor():
             "lock_meta": _load_json(lock_meta_path),
         },
         "telemetry": telemetry_payload,
+        "entropy": entropy_engine.evaluate(persist=False),
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+
+
+@router.get("/entropy/status", tags=["entropy"])
+async def entropy_status():
+    return entropy_engine.status()
+
+
+@router.post("/entropy/tick", tags=["entropy"])
+async def entropy_tick():
+    return entropy_engine.evaluate(persist=True)
 
 
 @router.get("/metrics", tags=["system"])

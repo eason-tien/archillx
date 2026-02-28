@@ -73,3 +73,31 @@ python scripts/verify_entropy_engine.py
 
 - `evidence/reports/ENTROPY_VERIFY_<YYYYMMDD_HHMMSS>.json`
 - 报告内含 `entropy_engine.jsonl` 的 `sha256`
+
+
+## Contract vs Non-contract Fields
+
+### Stable contract (API compatibility required)
+
+- `score`
+- `vector`
+- `risk`
+- `state`
+- `ts`
+
+这些字段是外部调用与监控聚合的稳定契约，后续版本不得随意删除或改名。
+
+### Non-contract (can evolve)
+
+- `predictor` 细节结构
+- `triggered_action` 语义扩展
+- `version`
+- 其他辅助调试字段（如 `entropy_*` 别名字段）
+
+## Monitor consistency semantics
+
+- `/v1/entropy/status` 返回当前缓存快照（若首次调用会初始化一次计算）。
+- `/v1/entropy/tick` 才是推进状态机并写入审计 evidence 的入口。
+- `/v1/system/monitor` 读取的是 `status()` 缓存快照，不做强制重算。
+
+因此 monitor 的 entropy 是“近实时快照”，不是“每次请求都重算”。

@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.main import app
+from app.entropy.engine import entropy_engine
 
 
 def _sha256(path: Path) -> str:
@@ -42,6 +43,25 @@ def main() -> int:
         if ok_tick:
             print('OK_ENTROPY_TICK_AUDITED')
 
+        # tick min interval behavior: second immediate tick should be skipped
+        from app.config import settings as _settings
+        old_min = _settings.entropy_tick_min_interval_s
+        old_last_tick = entropy_engine._last_tick_ts
+        _settings.entropy_tick_min_interval_s = max(1, int(old_min) if int(old_min) > 0 else 5)
+        entropy_engine._last_tick_ts = 0.0
+        evidence2 = Path('evidence/entropy_engine.jsonl')
+        before2 = evidence2.read_text(encoding='utf-8').count('\n') if evidence2.exists() else 0
+        first = client.post('/v1/entropy/tick')
+        second = client.post('/v1/entropy/tick')
+        after2 = evidence2.read_text(encoding='utf-8').count('\n') if evidence2.exists() else 0
+        sb = second.json() if second.status_code == 200 else {}
+        ok_skip = first.status_code == 200 and second.status_code == 200 and sb.get('skipped') is True and sb.get('reason') == 'tick_min_interval_not_reached' and 'next_allowed_ts' in sb and after2 == before2 + 1
+        report['checks']['OK_ENTROPY_TICK_SKIPPED'] = bool(ok_skip)
+        if ok_skip:
+            print('OK_ENTROPY_TICK_SKIPPED')
+        _settings.entropy_tick_min_interval_s = old_min
+        entropy_engine._last_tick_ts = old_last_tick
+
         m = client.get('/v1/system/monitor')
         mb = m.json() if m.status_code == 200 else {}
         ok_monitor = m.status_code == 200 and isinstance(mb.get('entropy'), dict) and 'score' in mb['entropy']
@@ -50,7 +70,7 @@ def main() -> int:
             print('OK_SYSTEM_MONITOR_INCLUDES_ENTROPY')
 
         ui = client.get('/ui')
-        ok_ui = ui.status_code == 200 and 'monitor-entropy-json' in ui.text
+        ok_ui = ui.status_code == 200 and 'monitor-entropy-json' in ui.text and 'Entropy Engine' in ui.text
         report['checks']['OK_UI_ENTROPY_RENDERED'] = bool(ok_ui)
         if ok_ui:
             print('OK_UI_ENTROPY_RENDERED')
@@ -67,7 +87,7 @@ def main() -> int:
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(f'REPORT={out_path}')
 
-    return 0 if all(report['checks'].values()) else 2
+    return 0 if all(report['checks'].values()) else 1
 
 
 if __name__ == '__main__':

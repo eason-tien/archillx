@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -11,6 +13,16 @@ from statistics import pstdev
 from typing import Any
 
 from ..config import settings
+
+try:
+    import fcntl  # type: ignore
+except Exception:  # pragma: no cover
+    fcntl = None
+
+try:
+    import msvcrt  # type: ignore
+except Exception:  # pragma: no cover
+    msvcrt = None
 from ..utils.telemetry import telemetry
 
 
@@ -70,6 +82,7 @@ class EntropyEngine:
         self._last_recovery_start_ts: float | None = None
         self._last_snapshot: dict[str, Any] | None = None
         self._last_tick_ts: float = 0.0
+        self._io_lock = threading.Lock()
 
     def _load_weights(self) -> dict[str, float]:
         defaults = {"memory": 0.2, "task": 0.2, "model": 0.2, "resource": 0.2, "decision": 0.2}
@@ -99,8 +112,26 @@ class EntropyEngine:
 
     def _append_evidence(self, payload: dict[str, Any]) -> None:
         out = self._evidence_path()
-        with out.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        line = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+        with self._io_lock:
+            with out.open("ab") as f:
+                if fcntl is not None:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                elif msvcrt is not None:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    f.write(line)
+                    f.flush()
+                    os.fsync(f.fileno())
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                    elif msvcrt is not None:
+                        try:
+                            f.seek(max(0, f.tell() - 1))
+                        except Exception:
+                            pass
+                        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
 
     def _collect_memory_entropy(self) -> float:
         try:
@@ -320,12 +351,19 @@ class EntropyEngine:
         min_interval = max(0, int(getattr(settings, "entropy_tick_min_interval_s", 5)))
         now = time.time()
         if persist and min_interval > 0 and (now - self._last_tick_ts) < min_interval:
-            if self._last_snapshot is not None:
-                return self._last_snapshot
+            next_allowed = self._last_tick_ts + min_interval
+            base = dict(self._last_snapshot or self.evaluate(persist=False))
+            base.update({
+                "skipped": True,
+                "reason": "tick_min_interval_not_reached",
+                "next_allowed_ts": datetime.fromtimestamp(next_allowed, tz=timezone.utc).isoformat(),
+            })
+            return base
         vector = self.collect_vector()
         out = self._evaluate_with_vector(vector, persist=persist, governor_override=bool(settings.governor_mode == "hard_block" and self._current_state == "CRITICAL"))
         if persist:
             self._last_tick_ts = now
+            out["skipped"] = False
         return out
 
     def evaluate_from_vector_for_test(self, vector: dict[str, float], persist: bool = True) -> dict[str, Any]:

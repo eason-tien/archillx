@@ -21,6 +21,7 @@ def test_entropy_status_endpoint_shape(client):
 def test_entropy_tick_persists_evidence(client, tmp_path):
     old_dir = settings.evidence_dir
     old_min = settings.entropy_tick_min_interval_s
+    old_last_tick = entropy_engine._last_tick_ts
     settings.evidence_dir = str(tmp_path)
     settings.entropy_tick_min_interval_s = 0
     try:
@@ -37,11 +38,13 @@ def test_entropy_tick_persists_evidence(client, tmp_path):
     finally:
         settings.evidence_dir = old_dir
         settings.entropy_tick_min_interval_s = old_min
+        entropy_engine._last_tick_ts = old_last_tick
 
 
 def test_entropy_state_machine_transition_audited(tmp_path):
     old_dir = settings.evidence_dir
     old_min = settings.entropy_tick_min_interval_s
+    old_last_tick = entropy_engine._last_tick_ts
     settings.evidence_dir = str(tmp_path)
     settings.entropy_tick_min_interval_s = 0
     try:
@@ -65,3 +68,30 @@ def test_entropy_state_machine_transition_audited(tmp_path):
     finally:
         settings.evidence_dir = old_dir
         settings.entropy_tick_min_interval_s = old_min
+        entropy_engine._last_tick_ts = old_last_tick
+
+
+def test_entropy_tick_skip_behavior(client, tmp_path):
+    old_dir = settings.evidence_dir
+    old_min = settings.entropy_tick_min_interval_s
+    old_last_tick = entropy_engine._last_tick_ts
+    settings.evidence_dir = str(tmp_path)
+    settings.entropy_tick_min_interval_s = 60
+    entropy_engine._last_tick_ts = 0.0
+    try:
+        out = Path(tmp_path) / 'entropy_engine.jsonl'
+        before = out.read_text(encoding='utf-8').count('\n') if out.exists() else 0
+        r1 = client.post('/v1/entropy/tick')
+        r2 = client.post('/v1/entropy/tick')
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        b2 = r2.json()
+        assert b2['skipped'] is True
+        assert b2['reason'] == 'tick_min_interval_not_reached'
+        assert 'next_allowed_ts' in b2
+        after = out.read_text(encoding='utf-8').count('\n') if out.exists() else 0
+        assert after == before + 1
+    finally:
+        settings.evidence_dir = old_dir
+        settings.entropy_tick_min_interval_s = old_min
+        entropy_engine._last_tick_ts = old_last_tick

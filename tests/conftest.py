@@ -23,6 +23,8 @@ def client() -> TestClient:
 def restore_settings():
     tracked = {
         'api_key': settings.api_key,
+        'app_env': settings.app_env,
+        'expose_internal_error_details': settings.expose_internal_error_details,
         'admin_token': settings.admin_token,
         'enable_lmf': settings.enable_lmf,
         'enable_planner': settings.enable_planner,
@@ -36,6 +38,12 @@ def restore_settings():
         'audit_file_max_bytes': settings.audit_file_max_bytes,
         'enable_migration_check': settings.enable_migration_check,
         'require_migration_head': settings.require_migration_head,
+        'recovery_heartbeat_path': settings.recovery_heartbeat_path,
+        'recovery_heartbeat_ttl_s': settings.recovery_heartbeat_ttl_s,
+        'recovery_ready_url': settings.recovery_ready_url,
+        'recovery_check_interval_s': settings.recovery_check_interval_s,
+        'recovery_lock_backend': settings.recovery_lock_backend,
+        'redis_url': settings.redis_url,
     }
     yield settings
     for key, value in tracked.items():

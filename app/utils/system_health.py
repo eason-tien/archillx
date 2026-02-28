@@ -4,7 +4,7 @@ from typing import Any
 
 
 def collect_readiness() -> dict[str, Any]:
-    checks: dict[str, bool] = {"db": False, "skills": False, "cron": False, "audit_dir": False, "migration": False}
+    checks: dict[str, bool] = {"db": False, "skills": False, "cron": False, "audit_dir": False, "migration": False, "recovery": True}
     details: dict[str, Any] = {}
     errors: list[str] = []
 
@@ -62,6 +62,22 @@ def collect_readiness() -> dict[str, Any]:
     except Exception as e:
         errors.append(f"migration:{e}")
         details["migration"] = {"error": str(e)}
+
+
+    try:
+        import tempfile
+        from pathlib import Path as _Path
+        state = _Path(tempfile.gettempdir()) / "archillx_recovery_state.json"
+        lock_meta = _Path(tempfile.gettempdir()) / "archillx_recovery.lock.json"
+        details["recovery"] = {
+            "state_path": str(state),
+            "state_present": state.exists(),
+            "lock_meta": str(lock_meta),
+            "lock_present": lock_meta.exists(),
+        }
+    except Exception as e:
+        errors.append(f"recovery:{e}")
+        details["recovery"] = {"error": str(e)}
 
     status = "ready" if all(checks.values()) else "degraded"
     return {"status": status, "checks": checks, "details": details, "errors": errors}

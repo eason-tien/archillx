@@ -18,6 +18,7 @@ from ..utils.telemetry import telemetry
 from ..utils.system_health import collect_readiness
 from ..evolution.signal_collector import _gate_summary
 from ..config import settings
+from ..entropy.engine import entropy_engine
 
 logger = logging.getLogger("archillx.api")
 
@@ -134,6 +135,11 @@ class MemoryAddReq(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class ProposalDecisionReq(BaseModel):
+    actor: str = "operator"
+    reason: str | None = None
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @router.get("/health", tags=["system"])
@@ -169,6 +175,241 @@ async def ready():
     payload.update({"system": "ArcHillx", "version": settings.app_version})
     code = 200 if payload["status"] == "ready" else 503
     return JSONResponse(payload, status_code=code)
+
+
+@router.get("/system/monitor", tags=["system"])
+async def system_monitor():
+    import os
+    import platform
+    import tempfile
+    import time
+    import json
+    from pathlib import Path as _Path
+
+    health_payload = await health()
+    ready_payload = collect_readiness()
+    migration_payload = await migration_state()
+    migration_body = migration_payload.body.decode("utf-8") if hasattr(migration_payload, "body") else "{}"
+    try:
+        migration_json = json.loads(migration_body)
+    except Exception:
+        migration_json = {"raw": migration_body}
+
+    hb_path = _Path(settings.recovery_heartbeat_path) if settings.recovery_heartbeat_path else (_Path(tempfile.gettempdir()) / "archillx_heartbeat.json")
+    state_path = _Path(tempfile.gettempdir()) / "archillx_recovery_state.json"
+    handoff_path = _Path(settings.recovery_handoff_path) if settings.recovery_handoff_path else (_Path(tempfile.gettempdir()) / "archillx_handoff.json")
+    lock_meta_path = _Path(tempfile.gettempdir()) / "archillx_recovery.lock.json"
+
+    def _load_json(path: _Path) -> dict:
+        if not path.exists():
+            return {"exists": False, "path": str(path)}
+        try:
+            return {"exists": True, "path": str(path), "payload": json.loads(path.read_text(encoding="utf-8"))}
+        except Exception as e:
+            return {"exists": True, "path": str(path), "error": str(e)}
+
+    hb_data = _load_json(hb_path)
+    age = None
+    if hb_data.get("exists") and isinstance(hb_data.get("payload"), dict):
+        epoch = hb_data["payload"].get("epoch")
+        if isinstance(epoch, (int, float)):
+            age = max(0.0, time.time() - float(epoch))
+
+    telemetry_payload = {
+        "snapshot": telemetry.snapshot(),
+        "aggregate": telemetry.aggregated_snapshot(),
+        "history_size": len(telemetry.history_snapshot() or []),
+    }
+
+    return {
+        "system": "ArcHillx",
+        "version": settings.app_version,
+        "app_env": settings.app_env,
+        "host": {
+            "hostname": platform.node(),
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "pid": os.getpid(),
+        },
+        "health": health_payload,
+        "ready": ready_payload,
+        "migration": migration_json,
+        "recovery": {
+            "enabled": settings.recovery_enabled,
+            "mode": settings.recovery_mode,
+            "lock_backend": settings.recovery_lock_backend,
+            "heartbeat_ttl_s": settings.recovery_heartbeat_ttl_s,
+            "heartbeat_age_s": age,
+            "heartbeat": hb_data,
+            "state": _load_json(state_path),
+            "handoff": _load_json(handoff_path),
+            "lock_meta": _load_json(lock_meta_path),
+        },
+        "telemetry": telemetry_payload,
+        "entropy": entropy_engine.status(),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+@router.get("/entropy/status", tags=["entropy"])
+async def entropy_status():
+    return entropy_engine.status()
+
+
+@router.post("/entropy/tick", tags=["entropy"])
+async def entropy_tick():
+    return entropy_engine.evaluate(persist=True)
+
+
+@router.get("/entropy/trend", tags=["entropy"])
+async def entropy_trend(window: str = Query("24h", pattern="^(24h|7d)$"), bucket: str = Query("1h", pattern="^(5m|1h)$")):
+    import sqlite3
+    import time
+    from collections import defaultdict
+    from pathlib import Path as _Path
+
+    db_path = _Path(settings.entropy_ops_sqlite_path).resolve()
+    if not db_path.exists():
+        return {"window": window, "bucket": bucket, "buckets": [], "transitions": 0, "last_state": None, "last_score": None}
+
+    now = time.time()
+    span = 24 * 3600 if window == '24h' else 7 * 24 * 3600
+    bsize = 300 if bucket == '5m' else 3600
+    start = now - span
+
+    con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute('SELECT ts,state,risk,score,event FROM entropy_events WHERE ts >= ? ORDER BY ts ASC', (start,)).fetchall()
+    finally:
+        con.close()
+
+    bucket_map: dict[int, dict] = {}
+    transitions = 0
+    last_state = None
+    last_score = None
+    for r in rows:
+        ts = float(r['ts'])
+        k = int((ts - start) // bsize)
+        entry = bucket_map.setdefault(k, {'scores': [], 'state_counts': defaultdict(int), 'risk_counts': defaultdict(int)})
+        sc = float(r['score'] or 0.0)
+        entry['scores'].append(sc)
+        entry['state_counts'][str(r['state'] or 'UNKNOWN')] += 1
+        entry['risk_counts'][str(r['risk'] or 'UNKNOWN')] += 1
+        if str(r['event']) == 'state_transition':
+            transitions += 1
+        last_state = str(r['state'] or last_state)
+        last_score = sc
+
+    out = []
+    for k in sorted(bucket_map):
+        b = bucket_map[k]
+        scores = b['scores']
+        t_start = start + k * bsize
+        out.append({
+            't_start': datetime.utcfromtimestamp(t_start).isoformat() + 'Z',
+            'avg_score': round(sum(scores)/len(scores), 4) if scores else 0.0,
+            'max_score': round(max(scores), 4) if scores else 0.0,
+            'state_counts': dict(b['state_counts']),
+            'risk_counts': dict(b['risk_counts']),
+        })
+
+    return {
+        'window': window,
+        'bucket': bucket,
+        'buckets': out,
+        'transitions': transitions,
+        'last_state': last_state,
+        'last_score': last_score,
+    }
+
+
+@router.get("/entropy/kpi", tags=["entropy"])
+async def entropy_kpi(window: str = Query("24h", pattern="^(24h|7d)$")):
+    import sqlite3
+    import time
+    from collections import defaultdict
+    from statistics import quantiles
+    from pathlib import Path as _Path
+
+    db_path = _Path(settings.entropy_ops_sqlite_path).resolve()
+    if not db_path.exists():
+        return {
+            'window': window,
+            'avg_score': 0.0,
+            'p95_score': 0.0,
+            'time_in_state': {},
+            'transitions_count': 0,
+            'alert_sent_count': 0,
+            'slo': {'A': 'green', 'B': 'green', 'C': 'green'}
+        }
+
+    span = 24 * 3600 if window == '24h' else 7 * 24 * 3600
+    start = time.time() - span
+
+    con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute('SELECT ts,state,score,event,risk FROM entropy_events WHERE ts >= ? ORDER BY ts ASC', (start,)).fetchall()
+        alerts = con.execute('SELECT COUNT(*) AS c FROM entropy_alert_log WHERE ts >= ?', (start,)).fetchone()['c']
+    finally:
+        con.close()
+
+    if not rows:
+        return {'window': window, 'avg_score': 0.0, 'p95_score': 0.0, 'time_in_state': {}, 'transitions_count': 0, 'alert_sent_count': int(alerts), 'slo': {'A': 'green', 'B': 'green', 'C': 'green'}}
+
+    scores = [float(r['score'] or 0.0) for r in rows]
+    avg_score = round(sum(scores) / len(scores), 4)
+    p95_score = round(quantiles(scores, n=20)[-1], 4) if len(scores) >= 2 else round(scores[0], 4)
+
+    time_in_state = defaultdict(float)
+    critical_time = 0.0
+    degraded_critical_transitions = 0
+
+    for i, row in enumerate(rows):
+        ts = float(row['ts'])
+        st = str(row['state'] or 'UNKNOWN')
+        nxt = float(rows[i + 1]['ts']) if i + 1 < len(rows) else time.time()
+        dur = max(0.0, nxt - ts)
+        time_in_state[st] += dur
+        if st == 'CRITICAL':
+            critical_time += dur
+        if st in {'DEGRADED', 'CRITICAL'} and str(row['event']) == 'state_transition':
+            degraded_critical_transitions += 1
+
+    slo_a = 'green' if critical_time < 300 else ('yellow' if critical_time < 900 else 'red')
+    slo_b = 'green' if degraded_critical_transitions < 10 else ('yellow' if degraded_critical_transitions < 20 else 'red')
+    slo_c = 'green' if avg_score < 0.45 else ('yellow' if avg_score < 0.6 else 'red')
+
+    return {
+        'window': window,
+        'avg_score': avg_score,
+        'p95_score': p95_score,
+        'time_in_state': {k: round(v, 3) for k, v in dict(time_in_state).items()},
+        'transitions_count': int(sum(1 for r in rows if str(r['event']) == 'state_transition')),
+        'alert_sent_count': int(alerts),
+        'slo': {'A': slo_a, 'B': slo_b, 'C': slo_c},
+    }
+
+
+@router.get("/entropy/proposals", tags=["entropy"])
+async def entropy_proposals(status: str = Query('PENDING'), limit: int = Query(50, ge=1, le=500)):
+    return {'items': entropy_engine.list_proposals(status=status, limit=limit)}
+
+
+@router.post("/entropy/proposals/{proposal_id}/approve", tags=["entropy"])
+async def entropy_proposal_approve(proposal_id: int, req: ProposalDecisionReq):
+    return entropy_engine.set_proposal_decision(proposal_id=proposal_id, action='approve', actor=req.actor, reason=req.reason)
+
+
+@router.post("/entropy/proposals/{proposal_id}/reject", tags=["entropy"])
+async def entropy_proposal_reject(proposal_id: int, req: ProposalDecisionReq):
+    return entropy_engine.set_proposal_decision(proposal_id=proposal_id, action='reject', actor=req.actor, reason=req.reason)
+
+
+@router.post("/entropy/proposals/{proposal_id}/execute", tags=["entropy"])
+async def entropy_proposal_execute(proposal_id: int, req: ProposalDecisionReq):
+    return entropy_engine.execute_approved_proposal(proposal_id=proposal_id, actor=req.actor)
 
 
 @router.get("/metrics", tags=["system"])

@@ -42,6 +42,9 @@ async def lifespan(app: FastAPI):
     from .evolution.auto_scheduler import evolution_scheduler
     evolution_scheduler.startup()
 
+    from .runtime.heartbeat import heartbeat_writer
+    heartbeat_writer.startup()
+
     from .utils.model_router import model_router
     providers = model_router.list_providers()
     logger.info("AI providers: %s",
@@ -67,6 +70,8 @@ async def lifespan(app: FastAPI):
     logger.info("ArcHillx v%s ready.", settings.app_version)
     yield
 
+    from .runtime.heartbeat import heartbeat_writer
+    heartbeat_writer.shutdown()
     from .evolution.auto_scheduler import evolution_scheduler
     evolution_scheduler.shutdown()
     from .runtime.cron import cron_system
@@ -185,15 +190,17 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 @app.exception_handler(Exception)
 async def unhandled_error_handler(request: Request, exc: Exception):
     logger.exception("unhandled request error: path=%s request_id=%s", request.url.path, getattr(request.state, "request_id", "-"))
+    detail = {
+        "code": "INTERNAL_SERVER_ERROR",
+        "message": "Unhandled server error",
+        "request_id": getattr(request.state, "request_id", None),
+    }
+    if settings.app_env.strip().lower() in {"dev", "development", "local", "test", "testing"} or settings.expose_internal_error_details:
+        detail["reason"] = str(exc)
     return JSONResponse(
         status_code=500,
         content={
-            "detail": {
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "Unhandled server error",
-                "reason": str(exc),
-                "request_id": getattr(request.state, "request_id", None),
-            }
+            "detail": detail
         },
     )
 
